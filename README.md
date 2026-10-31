@@ -109,6 +109,8 @@ docker run -d --name dsh-qqbot \
 
 不设 `QQBOT_APPID`/`QQBOT_SECRET` 时，首次启动会在终端出二维码，手机 QQ 扫码绑定后凭据自动存入 profile。常用配置（[完整列表](https://github.com/tencent-connect/dsh-qqbot#配置项)）：`requireMention`（群聊是否需 @bot）、`access.c2cMode`/`access.groupMode`（私聊/群聊白名单）、`provider`/`model`（默认 `deepseek-official` + `deepseek-chat`）。群聊支持 `@bot` 触发、白名单、内置 `/new` `/model` `/stop` 等斜杠命令。
 
+**模型凭据（DeepSeek 官网 API Key）**：`.env` 里配 `DEEPSEEK_API_KEY=sk-xxx` 经 compose 注入即可——这是官方支持的环境变量回退（内置 provider 配置 `apiKeyEnv: DEEPSEEK_API_KEY`，按请求解析）。解析优先级：Web UI「Settings → Models」存入 `$DSH_HOME/.credentials.yaml` 的凭据 **>** `DEEPSEEK_API_KEY` 环境变量。容器内无凭据时报 `MISSING_CREDENTIAL`。安全权衡：环境变量方式下 key 会出现在 `docker inspect` 输出里；更稳妥的是进一次 Web UI 把 key 存进凭据文件（随 `.dsh` 卷持久化，不进进程环境），compose 的注入留作 QQBot 无头场景的便利通道。
+
 compose 已内置 `dsh-qqbot` 服务（rootless `user: 1000:1000`、cpuset/内存限制、npmmirror 插件源，对齐 OpenClaw 的运行姿势），详见 [docker-compose.yml](docker-compose.yml) 顶部注释。
 
 ## 用非 web 模式

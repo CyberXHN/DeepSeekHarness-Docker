@@ -11,6 +11,7 @@
 #   MEMORY_LIMIT=4g
 #   QQBOT_APPID=你的AppID
 #   QQBOT_SECRET=你的AppSecret
+#   DEEPSEEK_API_KEY=sk-xxx     # DeepSeek 官网 API Key，注入后默认 provider 直接可用
 #   HOST_IP=0.0.0.0            # 仅 web 模式用：宿主侧绑定地址
 #
 # 首次使用（QQBot）：
@@ -39,6 +40,8 @@ services:
       HOME: /home/node
       QQBOT_APPID: ${QQBOT_APPID}
       QQBOT_SECRET: ${QQBOT_SECRET}
+      # DeepSeek 官方 provider 的凭据回退变量（存储凭据 .credentials.yaml 优先于它）
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       # 锁插件版本（默认装 @tencent-connect/dsh-qqbot@latest）：
       # QQBOT_PLUGIN: "@tencent-connect/dsh-qqbot@0.5.5"
       # dsh plugin 安装/更新插件走 npm；npmmirror 同步延迟时移除本项回官方源
@@ -76,6 +79,8 @@ services:
     environment:
       TZ: Asia/Shanghai
       HOME: /home/node
+      # DeepSeek 官方 provider 的凭据回退变量（存储凭据 .credentials.yaml 优先于它）
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       # 用局域网 IP/域名访问 Web UI 时追加信任围栏（localhost 默认放行）：
       # DSH_WEB_EXTRA_ARGS: "--trusted-host 192.168.1.10:3080"
       NPM_CONFIG_REGISTRY: https://registry.npmmirror.com/
