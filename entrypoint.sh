@@ -31,6 +31,19 @@ case "${1-web}" in
         # shellcheck disable=SC2086
         exec dsh web --host "${HOST_IP}" --no-open ${DSH_WEB_EXTRA_ARGS:-} "$@"
         ;;
+    qqbot)
+        shift
+        # The qqbot profile is not a shipped template: create it on first boot
+        # by installing the official Tencent plugin (one-time; needs npm access).
+        # Pin a version with QQBOT_PLUGIN, e.g. @tencent-connect/dsh-qqbot@0.5.5
+        PROFILE_DIR="${DSH_HOME}/profiles/qqbot"
+        if [ ! -f "${PROFILE_DIR}/dsh.profile" ]; then
+            echo "==> qqbot profile not found; installing ${QQBOT_PLUGIN:-@tencent-connect/dsh-qqbot@latest} (one-time)..."
+            dsh plugin --profile qqbot add "${QQBOT_PLUGIN:-@tencent-connect/dsh-qqbot@latest}"
+            echo "==> Plugin installed."
+        fi
+        exec dsh --profile qqbot "$@"
+        ;;
     *)
         # Any other command is passed through as-is, e.g.:
         #   docker run <image> dsh headless "answer one task"

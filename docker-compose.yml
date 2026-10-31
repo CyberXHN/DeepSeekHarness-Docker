@@ -15,9 +15,9 @@
 #
 # 首次使用（QQBot）：
 #   1. touch ${APP_PATH}/.npmrc ${APP_PATH}/.gitconfig   # 单文件挂载要求宿主文件先存在
-#   2. 一次性安装插件（走 compose 内 environment 的 npm 镜像源）：
-#      docker compose run --rm dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
-#   3. docker compose up -d
+#   2. docker compose up -d
+#      （qqbot profile 不存在时 entrypoint 自动安装 @tencent-connect/dsh-qqbot，
+#        首启多等 1-2 分钟；日志出现 "Plugin installed." 即完成）
 # Linux 宿主注意：${APP_PATH} 各目录需 chown 1000:1000（rootless 写入）；
 # 首启会从镜像内备份解包 102MB 到 npm-global 卷，日志停在 initializing 数分钟属正常。
 
@@ -33,12 +33,14 @@ services:
         limits:
           cpus: ${CPUS:-2}
           memory: ${MEMORY_LIMIT:-4g}
-    command: ["dsh", "--profile", "qqbot"]
+    command: ["qqbot"]
     environment:
       TZ: Asia/Shanghai
       HOME: /home/node
       QQBOT_APPID: ${QQBOT_APPID}
       QQBOT_SECRET: ${QQBOT_SECRET}
+      # 锁插件版本（默认装 @tencent-connect/dsh-qqbot@latest）：
+      # QQBOT_PLUGIN: "@tencent-connect/dsh-qqbot@0.5.5"
       # dsh plugin 安装/更新插件走 npm；npmmirror 同步延迟时移除本项回官方源
       NPM_CONFIG_REGISTRY: https://registry.npmmirror.com/
     volumes:

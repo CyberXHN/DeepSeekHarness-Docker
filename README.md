@@ -85,11 +85,14 @@ docker restart dsh
 不想用 Web UI、只想把 dsh 当 QQ 机器人 Assistant 用：腾讯 `tencent-connect` 官方为 dsh 出了第一方插件 [`@tencent-connect/dsh-qqbot`](https://github.com/tencent-connect/dsh-qqbot)（[npm](https://www.npmjs.com/package/@tencent-connect/dsh-qqbot)）。架构为 QQ 用户 → QQ WebSocket（出站长连接）→ 插件 → dsh agent loop → LLM，**不需要 Web UI，也不需要公网入站端口**。
 
 ```sh
-# 1. 一次性安装插件到 qqbot profile（写入 .dsh volume，重启不丢）
-docker compose run --rm dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
-
-# 2. 常驻启动（.env 里配 QQBOT_APPID / QQBOT_SECRET 免扫码绑定）
+# .env 里配 QQBOT_APPID / QQBOT_SECRET（免扫码绑定）
 docker compose up -d
+```
+
+`qqbot` 不是 dsh 内置模板 profile：首次启动时 entrypoint 检测到 profile 不存在会**自动安装**官方插件（日志出现 `installing @tencent-connect/dsh-qqbot` / `Plugin installed.`，需 1-2 分钟），之后随 `.dsh` 卷持久化。手动安装或锁版本的等价命令：
+
+```sh
+docker compose run --rm dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
 ```
 
 不用 compose 时等价的 docker run：
