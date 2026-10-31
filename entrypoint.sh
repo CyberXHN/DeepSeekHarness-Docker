@@ -36,8 +36,9 @@ case "${1-web}" in
         # The qqbot profile is not a shipped template: create it on first boot
         # by installing the official Tencent plugin (one-time; needs npm access).
         # Pin a version with QQBOT_PLUGIN, e.g. @tencent-connect/dsh-qqbot@0.5.5
+        # The profile root marker is cordis.yml (created by `dsh plugin ... add`).
         PROFILE_DIR="${DSH_HOME}/profiles/qqbot"
-        if [ ! -f "${PROFILE_DIR}/dsh.profile" ]; then
+        if [ ! -f "${PROFILE_DIR}/cordis.yml" ]; then
             echo "==> qqbot profile not found; installing ${QQBOT_PLUGIN:-@tencent-connect/dsh-qqbot@latest} (one-time)..."
             dsh plugin --profile qqbot add "${QQBOT_PLUGIN:-@tencent-connect/dsh-qqbot@latest}"
             echo "==> Plugin installed."
