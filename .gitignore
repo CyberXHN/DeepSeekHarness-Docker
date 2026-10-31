@@ -1,0 +1,8 @@
+# compose/bind-mount data directories
+data/
+
+# exported image archives
+*.tar
+
+# local build logs
+*.log

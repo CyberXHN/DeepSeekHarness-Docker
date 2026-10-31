@@ -1,0 +1,3 @@
+# Normalize line endings: LF everywhere, required for entrypoint.sh (container
+# scripts break with CRLF) and kept for Dockerfile / workflows consumed on Linux.
+* text=auto eol=lf

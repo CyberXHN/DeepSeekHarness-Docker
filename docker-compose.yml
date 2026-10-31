@@ -1,0 +1,44 @@
+services:
+  dsh:
+    image: deepseek-harness:${IMAGE_TAG:-latest}
+    container_name: dsh
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DSH_VERSION: ${DSH_VERSION:-latest}
+    ports:
+      - "3080:3080"
+    volumes:
+      # npm global directory (contains dsh installation) - persistent across in-place upgrades
+      - ${APP_PATH:-./data}/npm-global:/home/node/.npm-global
+      # Harness home: profiles, plugins, sessions, settings
+      - ${APP_PATH:-./data}/dsh:/home/node/.dsh
+      # Shared agent configuration root: AGENTS.md, skills/
+      - ${APP_PATH:-./data}/agents:/home/node/.agents
+      # Agent workspace (container working directory)
+      - ${APP_PATH:-./data}/workspace:/home/node/workspace
+    environment:
+      - TZ=Asia/Shanghai
+      # Extra dsh web arguments, e.g. allow access via a LAN IP or domain:
+      # - DSH_WEB_EXTRA_ARGS=--trusted-host 192.168.1.10:3080
+    restart: unless-stopped
+
+  # QQBot mode example: Tencent first-party plugin for QQ private/group chats
+  # (no Web UI needed). Install the plugin once first:
+  #   docker exec dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
+  # services:
+  #   dsh-qqbot:
+  #     image: deepseek-harness:${IMAGE_TAG:-latest}
+  #     container_name: dsh-qqbot
+  #     command: ["dsh", "--profile", "qqbot"]
+  #     environment:
+  #       - TZ=Asia/Shanghai
+  #       - QQBOT_APPID=your-appid
+  #       - QQBOT_SECRET=your-secret
+  #     volumes:
+  #       - ${APP_PATH:-./data}/npm-global:/home/node/.npm-global
+  #       - ${APP_PATH:-./data}/dsh:/home/node/.dsh
+  #       - ${APP_PATH:-./data}/agents:/home/node/.agents
+  #       - ${APP_PATH:-./data}/workspace:/home/node/workspace
+  #     restart: unless-stopped

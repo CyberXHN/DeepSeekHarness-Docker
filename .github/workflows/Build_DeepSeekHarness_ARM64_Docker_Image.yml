@@ -1,0 +1,99 @@
+name: Build DeepSeekHarness ARM64 Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: '镜像标签（例如：v1.0.0）'
+        required: true
+        default: 'latest'
+      dsh_version:
+        description: '@deepseek-ai/dsh npm 版本（例如：latest、0.2.1-rc.5）'
+        required: true
+        default: 'latest'
+
+env:
+  IMAGE_NAME: deepseek-harness
+  TARGET_PLATFORM: 'linux/arm64'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
+          tags: ${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+          push: false
+          outputs: type=docker,dest=/tmp/DeepSeekHarness_ARM64_${{ github.event.inputs.image_tag }}.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DSH_VERSION=${{ github.event.inputs.dsh_version }}
+
+      - name: Save image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeekHarness_ARM64_${{ github.event.inputs.image_tag }}
+          path: /tmp/DeepSeekHarness_ARM64_${{ github.event.inputs.image_tag }}.tar
+          retention-days: 30
+
+      - name: Verify image structure
+        run: |
+          docker load -i /tmp/DeepSeekHarness_ARM64_${{ github.event.inputs.image_tag }}.tar
+          IMG=${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+          echo "=== Verify dsh CLI ==="
+          docker run --rm --entrypoint="" $IMG dsh --version
+          echo "=== Verify factory backup file ==="
+          docker run --rm --entrypoint="" $IMG ls -lh /opt/dsh-backup.tar.xz
+          echo "=== Verify npm global layout ==="
+          docker run --rm --entrypoint="" $IMG ls /home/node/.npm-global/lib/node_modules/@deepseek-ai/dsh/package.json
+          echo "=== Verify npm global directory ownership ==="
+          docker run --rm --entrypoint="" $IMG stat -c '%U:%G %a' /home/node/.npm-global
+          echo "=== Verify NPM_CONFIG_PREFIX ==="
+          docker run --rm --entrypoint="" $IMG sh -c 'echo $NPM_CONFIG_PREFIX'
+          echo "=== Verify entrypoint.sh ==="
+          docker run --rm --entrypoint="" $IMG cat /entrypoint.sh
+          echo "=== Verify image size ==="
+          docker images $IMG --format "Size: {{.Size}}"
+
+      - name: Smoke-test web boot
+        run: |
+          IMG=${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+          docker run -d --name dsh-smoke $IMG
+          ok=0
+          for i in $(seq 1 30); do
+            IP=$(docker exec dsh-smoke hostname -i 2>/dev/null | awk '{print $1}')
+            if [ -n "$IP" ] && docker exec dsh-smoke node -e "const n=require('net');const s=n.connect(3080,'$IP',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1))" 2>/dev/null; then
+              ok=1; break
+            fi
+            sleep 2
+          done
+          docker logs dsh-smoke 2>&1 | tail -20
+          docker rm -f dsh-smoke > /dev/null
+          if [ "$ok" != "1" ]; then
+            echo "::error::dsh web did not listen on container IP:3080 within 60s"
+            exit 1
+          fi
+          echo "=== Smoke test passed: dsh web is listening ==="
+
+      - name: Display image info
+        run: |
+          echo "镜像构建完成！"
+          echo "镜像名称: ${{ env.IMAGE_NAME }}"
+          echo "镜像标签: ${{ github.event.inputs.image_tag }}"
+          echo "dsh 版本: ${{ github.event.inputs.dsh_version }}"
+          echo "目标平台: ${{ env.TARGET_PLATFORM }}"
+          echo "架构: Rootless npm local prefix + 出厂备份自解压"
+          echo "镜像已保存为工作流产物，可在 Artifacts 中下载"
