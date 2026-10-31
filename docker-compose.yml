@@ -1,44 +1,97 @@
-services:
-  dsh:
-    image: deepseek-harness:${IMAGE_TAG:-latest}
-    container_name: dsh
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        DSH_VERSION: ${DSH_VERSION:-latest}
-    ports:
-      - "3080:3080"
-    volumes:
-      # npm global directory (contains dsh installation) - persistent across in-place upgrades
-      - ${APP_PATH:-./data}/npm-global:/home/node/.npm-global
-      # Harness home: profiles, plugins, sessions, settings
-      - ${APP_PATH:-./data}/dsh:/home/node/.dsh
-      # Shared agent configuration root: AGENTS.md, skills/
-      - ${APP_PATH:-./data}/agents:/home/node/.agents
-      # Agent workspace (container working directory)
-      - ${APP_PATH:-./data}/workspace:/home/node/workspace
-    environment:
-      - TZ=Asia/Shanghai
-      # Extra dsh web arguments, e.g. allow access via a LAN IP or domain:
-      # - DSH_WEB_EXTRA_ARGS=--trusted-host 192.168.1.10:3080
-    restart: unless-stopped
+# DeepSeek Harness (dsh) — rootless compose（对齐 OpenClaw 的运行姿势）
+#
+# 模式：
+#   docker compose up -d                    # 默认 = QQBot 模式（腾讯官方插件，出站 WebSocket，无入站端口）
+#   docker compose --profile web up -d      # Web UI 模式（可与 QQBot 并存，profile 目录互不干扰）
+#
+# .env 示例（与 compose 同目录）：
+#   APP_PATH=./data
+#   IMAGE_TAG=latest
+#   CPUS=2
+#   MEMORY_LIMIT=4g
+#   QQBOT_APPID=你的AppID
+#   QQBOT_SECRET=你的AppSecret
+#   HOST_IP=0.0.0.0            # 仅 web 模式用：宿主侧绑定地址
+#
+# 首次使用（QQBot）：
+#   1. touch ${APP_PATH}/.npmrc ${APP_PATH}/.gitconfig   # 单文件挂载要求宿主文件先存在
+#   2. 一次性安装插件（走 compose 内 environment 的 npm 镜像源）：
+#      docker compose run --rm dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
+#   3. docker compose up -d
+# Linux 宿主注意：${APP_PATH} 各目录需 chown 1000:1000（rootless 写入）；
+# 首启会从镜像内备份解包 102MB 到 npm-global 卷，日志停在 initializing 数分钟属正常。
 
-  # QQBot mode example: Tencent first-party plugin for QQ private/group chats
-  # (no Web UI needed). Install the plugin once first:
-  #   docker exec dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
-  # services:
-  #   dsh-qqbot:
-  #     image: deepseek-harness:${IMAGE_TAG:-latest}
-  #     container_name: dsh-qqbot
-  #     command: ["dsh", "--profile", "qqbot"]
-  #     environment:
-  #       - TZ=Asia/Shanghai
-  #       - QQBOT_APPID=your-appid
-  #       - QQBOT_SECRET=your-secret
-  #     volumes:
-  #       - ${APP_PATH:-./data}/npm-global:/home/node/.npm-global
-  #       - ${APP_PATH:-./data}/dsh:/home/node/.dsh
-  #       - ${APP_PATH:-./data}/agents:/home/node/.agents
-  #       - ${APP_PATH:-./data}/workspace:/home/node/workspace
-  #     restart: unless-stopped
+services:
+  dsh-qqbot:
+    image: deepseek-harness:${IMAGE_TAG:-latest}
+    container_name: DeepSeekHarness-QQBot
+    hostname: DeepSeekHarness
+    user: 1000:1000
+    cpuset: "6-7"
+    deploy:
+      resources:
+        limits:
+          cpus: ${CPUS:-2}
+          memory: ${MEMORY_LIMIT:-4g}
+    command: ["dsh", "--profile", "qqbot"]
+    environment:
+      TZ: Asia/Shanghai
+      HOME: /home/node
+      QQBOT_APPID: ${QQBOT_APPID}
+      QQBOT_SECRET: ${QQBOT_SECRET}
+      # dsh plugin 安装/更新插件走 npm；npmmirror 同步延迟时移除本项回官方源
+      NPM_CONFIG_REGISTRY: https://registry.npmmirror.com/
+    volumes:
+      - ${APP_PATH:-./data}/.npmrc:/home/node/.npmrc
+      - ${APP_PATH:-./data}/.gitconfig:/home/node/.gitconfig
+      # npm global 目录（含 dsh 安装本体），升级与插件持久化
+      - ${APP_PATH:-./data}/npm-global:/home/node/.npm-global
+      # harness 主目录：profiles、插件、会话、设置
+      - ${APP_PATH:-./data}/dsh:/home/node/.dsh
+      # 共享 agent 配置根：AGENTS.md、skills/
+      - ${APP_PATH:-./data}/agents:/home/node/.agents
+      # agent 工作区
+      - ${APP_PATH:-./data}/workspace:/home/node/workspace
+    # QQBot 为出站长连接，无需入站端口
+    restart: unless-stopped
+    networks:
+      - baota_net
+    extra_hosts:
+      - search.cloud.20771024.xyz:192.168.31.6   # 按需修改/删除
+
+  dsh-web:
+    profiles: ["web"]
+    image: deepseek-harness:${IMAGE_TAG:-latest}
+    container_name: DeepSeekHarness-Web
+    hostname: DeepSeekHarness
+    user: 1000:1000
+    cpuset: "6-7"
+    deploy:
+      resources:
+        limits:
+          cpus: ${CPUS:-2}
+          memory: ${MEMORY_LIMIT:-4g}
+    environment:
+      TZ: Asia/Shanghai
+      HOME: /home/node
+      # 用局域网 IP/域名访问 Web UI 时追加信任围栏（localhost 默认放行）：
+      # DSH_WEB_EXTRA_ARGS: "--trusted-host 192.168.1.10:3080"
+      NPM_CONFIG_REGISTRY: https://registry.npmmirror.com/
+    volumes:
+      - ${APP_PATH:-./data}/.npmrc:/home/node/.npmrc
+      - ${APP_PATH:-./data}/.gitconfig:/home/node/.gitconfig
+      - ${APP_PATH:-./data}/npm-global:/home/node/.npm-global
+      - ${APP_PATH:-./data}/dsh:/home/node/.dsh
+      - ${APP_PATH:-./data}/agents:/home/node/.agents
+      - ${APP_PATH:-./data}/workspace:/home/node/workspace
+    ports:
+      - ${HOST_IP:-127.0.0.1}:3080:3080
+    restart: unless-stopped
+    networks:
+      - baota_net
+    extra_hosts:
+      - search.cloud.20771024.xyz:192.168.31.6
+
+networks:
+  baota_net:
+    external: true   # 宝塔环境已有；其他环境先 docker network create baota_net 或删除本文件所有 networks/extra_hosts 相关行

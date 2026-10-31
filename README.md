@@ -36,8 +36,9 @@ docker run -d --name dsh -p 3080:3080 \
   -v ./data/workspace:/home/node/workspace \
   deepseek-harness:latest
 
-# 或 docker compose
+# 或 docker compose（默认 = QQBot 模式，rootless；Web 用 --profile web）
 docker compose up -d
+docker compose --profile web up -d
 ```
 
 > **首启解包提示**：volume 为空的首次启动会从镜像内置备份解包 102MB（数万个小文件），日志停在 `initializing from image backup...` 数分钟属正常。Docker Desktop（Windows/macOS）的 bind mount 跨 VM 文件系统较慢，生产服务器（named volume / Linux bind mount）约 1-2 分钟；解包完成后日志会出现 `dsh version: x.y.z` 行。
@@ -85,9 +86,15 @@ docker restart dsh
 
 ```sh
 # 1. 一次性安装插件到 qqbot profile（写入 .dsh volume，重启不丢）
-docker exec -it dsh dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
+docker compose run --rm dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
 
-# 2. 以 QQBot 模式启动（覆盖默认 CMD；QQBOT_APPID/SECRET 免扫码绑定）
+# 2. 常驻启动（.env 里配 QQBOT_APPID / QQBOT_SECRET 免扫码绑定）
+docker compose up -d
+```
+
+不用 compose 时等价的 docker run：
+
+```sh
 docker run -d --name dsh-qqbot \
   -e QQBOT_APPID=你的AppID -e QQBOT_SECRET=你的AppSecret \
   -v ./data/npm-global:/home/node/.npm-global \
@@ -99,7 +106,7 @@ docker run -d --name dsh-qqbot \
 
 不设 `QQBOT_APPID`/`QQBOT_SECRET` 时，首次启动会在终端出二维码，手机 QQ 扫码绑定后凭据自动存入 profile。常用配置（[完整列表](https://github.com/tencent-connect/dsh-qqbot#配置项)）：`requireMention`（群聊是否需 @bot）、`access.c2cMode`/`access.groupMode`（私聊/群聊白名单）、`provider`/`model`（默认 `deepseek-official` + `deepseek-chat`）。群聊支持 `@bot` 触发、白名单、内置 `/new` `/model` `/stop` 等斜杠命令。
 
-compose 示例见 [docker-compose.yml](docker-compose.yml) 末尾注释块。
+compose 已内置 `dsh-qqbot` 服务（rootless `user: 1000:1000`、cpuset/内存限制、npmmirror 插件源，对齐 OpenClaw 的运行姿势），详见 [docker-compose.yml](docker-compose.yml) 顶部注释。
 
 ## 用非 web 模式
 
