@@ -43,6 +43,26 @@ case "${1-web}" in
             dsh plugin --profile qqbot add "${QQBOT_PLUGIN:-@tencent-connect/dsh-qqbot@latest}"
             echo "==> Plugin installed."
         fi
+        # ReMe memory plugin (one-time). Idempotent marker = the profile's
+        # package.json dependency (written by `dsh plugin add` via pnpm, then
+        # auto-registered as a bundle layer). Endpoint comes from the REME_URL
+        # env; the only file config is the zh guidance language, appended to
+        # the profile patch. A failed install must not brick the QQBot.
+        if [ "${REME_PLUGIN_INSTALL:-1}" = "1" ]; then
+            if ! grep -q '"@agentscope-ai/reme-dsh-plugin"' "${PROFILE_DIR}/package.json" 2>/dev/null; then
+                echo "==> installing ${REME_PLUGIN:-@agentscope-ai/reme-dsh-plugin@latest} into qqbot profile (one-time)..."
+                if dsh plugin --profile qqbot add "${REME_PLUGIN:-@agentscope-ai/reme-dsh-plugin@latest}"; then
+                    echo "==> ReMe plugin installed."
+                else
+                    echo "!! ReMe plugin install failed; QQBot continues WITHOUT memory. Fix the cause, then: docker compose restart dsh-qqbot"
+                fi
+            fi
+            # Guidance language: zh (UI-less profile; config = profile patch entry)
+            if grep -q '"@agentscope-ai/reme-dsh-plugin"' "${PROFILE_DIR}/package.json" 2>/dev/null \
+               && ! grep -q 'id: reme-memory' "${PROFILE_DIR}/cordis.patch.yml" 2>/dev/null; then
+                printf -- '- id: reme-memory\n  config:\n    language: zh\n' >> "${PROFILE_DIR}/cordis.patch.yml"
+            fi
+        fi
         exec dsh --profile qqbot "$@"
         ;;
     *)

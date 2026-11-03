@@ -11,14 +11,19 @@
 #   MEMORY_LIMIT=4g
 #   QQBOT_APPID=你的AppID
 #   QQBOT_SECRET=你的AppSecret
-#   DEEPSEEK_API_KEY=sk-xxx     # DeepSeek 官网 API Key，注入后默认 provider 直接可用
+#   DEEPSEEK_API_KEY=sk-xxx     # DeepSeek 官网 API Key，注入后默认 provider 直接可用，
+#                               # 同时供 ReMe 记忆整理（auto_memory/auto_dream）复用
 #   HOST_IP=0.0.0.0            # 仅 web 模式用：宿主侧绑定地址
+#   REME_TAG=latest            # ReMe 记忆服务镜像 tag（生产建议锁版本/digest）
+#   REME_BIND=127.0.0.1        # ReMe Studio 端口发布地址（无认证服务，勿暴露公网）
 #
 # 首次使用（QQBot）：
 #   1. touch ${APP_PATH}/.npmrc ${APP_PATH}/.gitconfig   # 单文件挂载要求宿主文件先存在
-#   2. docker compose up -d
-#      （qqbot profile 不存在时 entrypoint 自动安装 @tencent-connect/dsh-qqbot，
-#        首启多等 1-2 分钟；日志出现 "Plugin installed." 即完成）
+#   2. docker network create Bot   # 外部网络，本文件全部服务共用（已存在则跳过）
+#   3. docker compose up -d
+#      （qqbot profile 不存在时 entrypoint 自动安装 @tencent-connect/dsh-qqbot
+#        与 @agentscope-ai/reme-dsh-plugin 记忆插件（REME_PLUGIN_INSTALL=0 可关），
+#        首启多等 1-2 分钟；日志出现 "Plugin installed." / "ReMe plugin installed." 即完成）
 # Linux 宿主注意：${APP_PATH} 各目录需 chown 1000:1000（rootless 写入）；
 # 首启会从镜像内备份解包 102MB 到 npm-global 卷，日志停在 initializing 数分钟属正常。
 
@@ -46,6 +51,9 @@ services:
       # QQBOT_PLUGIN: "@tencent-connect/dsh-qqbot@0.5.5"
       # dsh plugin 安装/更新插件走 npm；npmmirror 同步延迟时移除本项回官方源
       NPM_CONFIG_REGISTRY: https://registry.npmmirror.com/
+      # ReMe 记忆插件 endpoint 的部署层默认值（容器名直连；qqbot 无状态页，无浏览器
+      # 可达性约束。优先级：profile patch 显式配置 > 本环境变量 > 127.0.0.1 默认）
+      REME_URL: http://DeepSeekHarness-ReMe:2333
     volumes:
       - ${APP_PATH:-./data}/.npmrc:/home/node/.npmrc
       - ${APP_PATH:-./data}/.gitconfig:/home/node/.gitconfig
@@ -60,9 +68,41 @@ services:
     # QQBot 为出站长连接，无需入站端口
     restart: unless-stopped
     networks:
-      - baota_net
+      - Bot
     extra_hosts:
       - search.cloud.20771024.xyz:192.168.31.6   # 按需修改/删除
+
+  # ReMe 记忆服务：daily/digest Markdown 记忆引擎（HTTP 无认证，只挂 Bot 内部网络 +
+  # loopback 发布端口；记忆整理 LLM 复用 DEEPSEEK_API_KEY）
+  reme:
+    image: ghcr.io/agentscope-ai/reme:${REME_TAG:-latest}
+    container_name: DeepSeekHarness-ReMe
+    user: "1000:1000"
+    # 记忆整理调度交给 dsh 插件（qqbot profile 的 autoDreamEnabled，每日 23:00；
+    # 多宿主共享 ReMe 时只允许一个调度方）
+    command: ["start", "jobs.dream_cron.enabled=false"]
+    environment:
+      TZ: Asia/Shanghai
+      REME_HOST: 0.0.0.0
+      REME_PORT: "2333"
+      REME_WORKSPACE_DIR: /data
+      REME_TIMEZONE: Asia/Shanghai
+      # auto_memory / auto_dream 必需的 LLM 凭据（OpenAI 兼容端点）
+      LLM_API_KEY: ${DEEPSEEK_API_KEY}
+      LLM_BASE_URL: https://api.deepseek.com/v1
+      LLM_MODEL_NAME: deepseek-chat
+    volumes:
+      - ${APP_PATH:-./data}/reme:/data   # 记忆事实源（daily/、digest/），独立卷
+    ports:
+      - "${REME_BIND:-127.0.0.1}:2333:2333"   # ReMe Studio 浏览入口；无认证服务，勿暴露公网
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      - Bot
 
   dsh-web:
     profiles: ["web"]
@@ -95,10 +135,10 @@ services:
       - ${HOST_IP:-127.0.0.1}:3080:3080
     restart: unless-stopped
     networks:
-      - baota_net
+      - Bot
     extra_hosts:
       - search.cloud.20771024.xyz:192.168.31.6
 
 networks:
-  baota_net:
-    external: true   # 宝塔环境已有；其他环境先 docker network create baota_net 或删除本文件所有 networks/extra_hosts 相关行
+  Bot:
+    external: true   # 先 docker network create Bot（网络名区分大小写）；dsh 容器与 ReMe 同网互达
