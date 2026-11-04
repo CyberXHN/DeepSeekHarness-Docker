@@ -53,18 +53,12 @@ jobs:
         run: |
           docker load -i /tmp/DeepSeekHarness_ARM64_${{ github.event.inputs.image_tag }}.tar
           IMG=${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
-          echo "=== Verify dsh CLI ==="
-          docker run --rm --entrypoint="" $IMG dsh --version
-          echo "=== Verify factory backup file ==="
-          docker run --rm --entrypoint="" $IMG ls -lh /opt/dsh-backup.tar.xz
-          echo "=== Verify npm global layout ==="
-          docker run --rm --entrypoint="" $IMG ls /home/node/.npm-global/lib/node_modules/@deepseek-ai/dsh/package.json
-          echo "=== Verify npm global directory ownership ==="
-          docker run --rm --entrypoint="" $IMG stat -c '%U:%G %a' /home/node/.npm-global
+          echo "=== Verify backup-only layout (no unpacked dsh in image layers) ==="
+          docker run --rm --entrypoint="" $IMG sh -c 'test ! -e /home/node/.npm-global && test -f /opt/dsh-backup.tar.xz && ls -lh /opt/dsh-backup.tar.xz'
           echo "=== Verify NPM_CONFIG_PREFIX ==="
           docker run --rm --entrypoint="" $IMG sh -c 'echo $NPM_CONFIG_PREFIX'
-          echo "=== Verify entrypoint.sh ==="
-          docker run --rm --entrypoint="" $IMG cat /entrypoint.sh
+          echo "=== Verify first-boot extraction via entrypoint (dsh CLI + ownership) ==="
+          docker run --rm $IMG sh -c 'dsh --version && stat -c "%U:%G %a" /home/node/.npm-global'
           echo "=== Verify image size ==="
           docker images $IMG --format "Size: {{.Size}}"
 
@@ -73,7 +67,7 @@ jobs:
           IMG=${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
           docker run -d --name dsh-smoke $IMG
           ok=0
-          for i in $(seq 1 30); do
+          for i in $(seq 1 45); do
             IP=$(docker exec dsh-smoke hostname -i 2>/dev/null | awk '{print $1}')
             if [ -n "$IP" ] && docker exec dsh-smoke node -e "const n=require('net');const s=n.connect(3080,'$IP',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1))" 2>/dev/null; then
               ok=1; break
@@ -83,7 +77,7 @@ jobs:
           docker logs dsh-smoke 2>&1 | tail -20
           docker rm -f dsh-smoke > /dev/null
           if [ "$ok" != "1" ]; then
-            echo "::error::dsh web did not listen on container IP:3080 within 60s"
+            echo "::error::dsh web did not listen on container IP:3080 within 90s"
             exit 1
           fi
           echo "=== Smoke test passed: dsh web is listening ==="
