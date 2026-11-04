@@ -20,6 +20,23 @@ echo "==> dsh version: $(dsh --version 2>/dev/null || echo 'unknown')"
 case "${1-web}" in
     web)
         shift
+        # dsh-context-truth: injects the host-measured context occupancy into
+        # the model's context every turn, and keeps compaction summaries from
+        # carrying false "context nearly exhausted" claims. One-time install;
+        # idempotent marker = the profile's package.json dependency entry
+        # (dsh plugin add initializes the profile from the shipped web
+        # template on first use). A failed install must not brick the web UI.
+        if [ "${WEB_CONTEXT_PLUGIN_INSTALL:-1}" = "1" ]; then
+            WEB_PROFILE_DIR="${DSH_HOME}/profiles/web"
+            if ! grep -q '"dsh-context-truth"' "${WEB_PROFILE_DIR}/package.json" 2>/dev/null; then
+                echo "==> installing ${WEB_CONTEXT_PLUGIN:-dsh-context-truth@latest} into web profile (one-time)..."
+                if dsh plugin --profile web add "${WEB_CONTEXT_PLUGIN:-dsh-context-truth@latest}"; then
+                    echo "==> dsh-context-truth plugin installed."
+                else
+                    echo "!! dsh-context-truth install failed; web continues WITHOUT it. Fix the cause, then: docker compose --profile web restart dsh-web"
+                fi
+            fi
+        fi
         # dsh rejects wildcard bind addresses; bind the container's own IP so
         # published ports (-p / ports:) can reach the listener.
         HOST_IP="$(hostname -i 2>/dev/null | awk '{print $1}')"
@@ -61,6 +78,19 @@ case "${1-web}" in
             if grep -q '"@agentscope-ai/reme-dsh-plugin"' "${PROFILE_DIR}/package.json" 2>/dev/null \
                && ! grep -q 'id: reme-memory' "${PROFILE_DIR}/cordis.patch.yml" 2>/dev/null; then
                 printf -- '- id: reme-memory\n  config:\n    language: zh\n' >> "${PROFILE_DIR}/cordis.patch.yml"
+            fi
+        fi
+        # dsh-context-truth (one-time). Same behavior-level plugin as the web
+        # profile's: host-measured occupancy injected every turn — the UI-less
+        # QQBot's long sessions benefit from it as much as the Web UI does.
+        if [ "${QQBOT_CONTEXT_PLUGIN_INSTALL:-1}" = "1" ]; then
+            if ! grep -q '"dsh-context-truth"' "${PROFILE_DIR}/package.json" 2>/dev/null; then
+                echo "==> installing ${QQBOT_CONTEXT_PLUGIN:-dsh-context-truth@latest} into qqbot profile (one-time)..."
+                if dsh plugin --profile qqbot add "${QQBOT_CONTEXT_PLUGIN:-dsh-context-truth@latest}"; then
+                    echo "==> dsh-context-truth plugin installed."
+                else
+                    echo "!! dsh-context-truth install failed; QQBot continues WITHOUT it. Fix the cause, then: docker compose restart dsh-qqbot"
+                fi
             fi
         fi
         exec dsh --profile qqbot "$@"

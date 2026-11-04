@@ -21,9 +21,12 @@
 #   1. touch ${APP_PATH}/.npmrc ${APP_PATH}/.gitconfig   # 单文件挂载要求宿主文件先存在
 #   2. docker network create Bot   # 外部网络，本文件全部服务共用（已存在则跳过）
 #   3. docker compose up -d
-#      （qqbot profile 不存在时 entrypoint 自动安装 @tencent-connect/dsh-qqbot
-#        与 @agentscope-ai/reme-dsh-plugin 记忆插件（REME_PLUGIN_INSTALL=0 可关），
-#        首启多等 1-2 分钟；日志出现 "Plugin installed." / "ReMe plugin installed." 即完成）
+#      （qqbot profile 不存在时 entrypoint 自动安装 @tencent-connect/dsh-qqbot；
+#        之后按开关自动装 @agentscope-ai/reme-dsh-plugin 记忆插件与
+#        dsh-context-truth 上下文占用回填插件（REME_PLUGIN_INSTALL /
+#        QQBOT_CONTEXT_PLUGIN_INSTALL =0 可关），首启多等 2-3 分钟；日志出现
+#        "Plugin installed." / "ReMe plugin installed." / "dsh-context-truth
+#        plugin installed." 即完成）
 # Linux 宿主注意：${APP_PATH} 各目录需 chown 1000:1000（rootless 写入）；
 # 首启会从镜像内备份解包 102MB 到 npm-global 卷，日志停在 initializing 数分钟属正常。
 
@@ -54,6 +57,9 @@ services:
       # ReMe 记忆插件 endpoint 的部署层默认值（容器名直连；qqbot 无状态页，无浏览器
       # 可达性约束。优先级：profile patch 显式配置 > 本环境变量 > 127.0.0.1 默认）
       REME_URL: http://DeepSeekHarness-ReMe:2333
+      # qqbot 首启同样自动装 dsh-context-truth（每轮回填宿主实测上下文占用，
+      # UI-less 长会话同样受益）；QQBOT_CONTEXT_PLUGIN_INSTALL=0 关闭，
+      # 锁版本设 QQBOT_CONTEXT_PLUGIN: dsh-context-truth@0.2.0
     volumes:
       - ${APP_PATH:-./data}/.npmrc:/home/node/.npmrc
       - ${APP_PATH:-./data}/.gitconfig:/home/node/.gitconfig
@@ -123,6 +129,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       # 用局域网 IP/域名访问 Web UI 时追加信任围栏（localhost 默认放行）：
       # DSH_WEB_EXTRA_ARGS: "--trusted-host 192.168.1.10:3080"
+      # 首启自动装 dsh-context-truth（每轮回填宿主实测上下文占用，防压缩摘要
+      # 继承“上下文快用完了”误判）；WEB_CONTEXT_PLUGIN_INSTALL=0 关闭，
+      # 锁版本设 WEB_CONTEXT_PLUGIN: dsh-context-truth@0.2.0
       NPM_CONFIG_REGISTRY: https://registry.npmmirror.com/
     volumes:
       - ${APP_PATH:-./data}/.npmrc:/home/node/.npmrc

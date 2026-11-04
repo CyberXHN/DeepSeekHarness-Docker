@@ -60,7 +60,16 @@ docker run -d -p 3080:3080 -e DSH_WEB_EXTRA_ARGS="--trusted-host 192.168.1.10:30
 # compose 场景：取消 environment 中 DSH_WEB_EXTRA_ARGS 的注释
 ```
 
-上游设计为"Web UI 只监听 loopback + 前置反代"，并明确拒绝绑定 `0.0.0.0` 通配地址；本镜像按上游文档推荐的容器姿势，由 entrypoint 动态绑定容器自身 IP（`hostname -i`），端口映射即可直通，无需容器内反代。**启动 URL 即凭证，3080 端口不要直接暴露公网**；公网部署请按上游文档加反代 + TLS（`--public-url` / `--tls-cert`，可用 `DSH_WEB_EXTRA_ARGS` 传入）。
+上游设计为“Web UI 只监听 loopback + 前置反代”，并明确拒绝绑定 `0.0.0.0` 通配地址；本镜像按上游文档推荐的容器姿势，由 entrypoint 动态绑定容器自身 IP（`hostname -i`），端口映射即可直通，无需容器内反代。**启动 URL 即凭证，3080 端口不要直接暴露公网**；公网部署请按上游文档加反代 + TLS（`--public-url` / `--tls-cert`，可用 `DSH_WEB_EXTRA_ARGS` 传入）。
+
+### Web 首启自动安装 dsh-context-truth
+
+`dsh-web` 首次启动时 entrypoint 检测到 web profile 缺少 [`dsh-context-truth`](https://github.com/deepseekv41flash/dsh-context-truth) 会**自动安装**（日志出现 `installing dsh-context-truth` / `dsh-context-truth plugin installed.`，约 1 分钟）。该插件把宿主实测的上下文占用每轮回填进模型上下文（DSH 默认不告诉模型 token 用量，长会话里模型会凭对话长度误判“上下文见底”），并阻止压缩摘要继承这类错误声明。`WEB_CONTEXT_PLUGIN_INSTALL=0` 关闭；锁版本设 `WEB_CONTEXT_PLUGIN: dsh-context-truth@0.2.0`。手动安装/更新的等价命令：
+
+```sh
+docker exec DeepSeekHarness-Web dsh plugin --profile web add dsh-context-truth
+docker exec DeepSeekHarness-Web dsh plugin --profile web update dsh-context-truth@latest
+```
 
 ## 不重建镜像升级 dsh（自解压模式）
 
@@ -89,7 +98,7 @@ docker restart dsh
 docker compose up -d
 ```
 
-`qqbot` 不是 dsh 内置模板 profile：首次启动时 entrypoint 检测到 profile 不存在会**自动安装**官方插件（日志出现 `installing @tencent-connect/dsh-qqbot` / `Plugin installed.`，需 1-2 分钟），之后随 `.dsh` 卷持久化。手动安装或锁版本的等价命令：
+`qqbot` 不是 dsh 内置模板 profile：首次启动时 entrypoint 检测到 profile 不存在会**自动安装**官方插件，随后按开关自动装 ReMe 记忆插件（`REME_PLUGIN_INSTALL=0` 可关，详见 [REME_INTEGRATION.md](REME_INTEGRATION.md)）与 [`dsh-context-truth`](https://github.com/deepseekv41flash/dsh-context-truth) 上下文占用回填插件（`QQBOT_CONTEXT_PLUGIN_INSTALL=0` 可关；日志出现 `Plugin installed.` / `ReMe plugin installed.` / `dsh-context-truth plugin installed.`，共需 2-3 分钟），之后随 `.dsh` 卷持久化。手动安装或锁版本的等价命令：
 
 ```sh
 docker compose run --rm dsh-qqbot dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot

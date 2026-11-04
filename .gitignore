@@ -6,3 +6,6 @@ data/
 
 # local build logs
 *.log
+
+# upstream source clones (dsh + plugins), for local behavior analysis only (not part of this packaging project)
+upstream/
