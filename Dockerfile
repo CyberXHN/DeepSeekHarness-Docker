@@ -1,13 +1,33 @@
 # ====== DeepSeek Harness (dsh) Docker Image ======
-# Base: Debian 13 (trixie) standard image with official Node.js 24
-# Rootless npm global install with local prefix.
-# Self-extracting upgrade model (same as OpenClaw image):
-#   - the image bundles a factory backup of the npm prefix (/opt/dsh-backup.tar.xz)
-#   - on first start with an empty volume, entrypoint.sh restores it
+# Base: Debian 13 (trixie) standard image with official Node.js 24.
+# Backup-only layout (multi-stage): the runtime image bundles ONLY the
+# compressed factory backup (/opt/dsh-backup.tar.xz) — the unpacked npm
+# prefix never enters the image layers (saves ~2.2GB: unpacked copy +
+# chown copy-up copy). Self-extracting upgrade model:
+#   - on first start with an empty volume, entrypoint.sh restores the backup
 #   - in-place upgrade without rebuilding the image:
 #       docker exec <container> npm install -g @deepseek-ai/dsh@latest
 #       docker restart <container>
 
+# ------ Stage 1: install dsh as node user, pack the factory backup ------
+FROM node:24-trixie AS dsh-packager
+
+# Rootless npm global install with local prefix. Installing as node from
+# the start makes every file node-owned, so no chown pass (and no chown
+# copy-up layer) is ever needed.
+ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
+ENV PATH="/home/node/.npm-global/bin:${PATH}"
+
+# pnpm is required by `dsh plugin` (profile plugin management forwards to pnpm),
+# e.g. installing the official QQ Bot plugin:
+#   dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
+ARG DSH_VERSION=latest
+USER node
+RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} pnpm && \
+    npm cache clean --force && \
+    tar -I 'xz -6' -cf /tmp/dsh-backup.tar.xz -C /home/node .npm-global
+
+# ------ Stage 2: runtime image (backup only, no unpacked dsh) ------
 FROM node:24-trixie
 
 USER root
@@ -30,21 +50,9 @@ RUN apt-get update && \
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 ENV PATH="/home/node/.npm-global/bin:${PATH}"
 
-# Build-time install of dsh (runs as root, installs to node-owned prefix).
-# pnpm is required by `dsh plugin` (profile plugin management forwards to pnpm),
-# e.g. installing the official QQ Bot plugin:
-#   dsh plugin --profile qqbot add @tencent-connect/dsh-qqbot
-ARG DSH_VERSION=latest
-RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} pnpm && \
-    npm cache clean --force
-
 # Factory backup of the initial install for volume first-time initialization.
 # When a bind mount is empty on first start, entrypoint restores from this archive.
-RUN tar -I 'xz -6' -cf /opt/dsh-backup.tar.xz -C /home/node .npm-global
-
-# Ensure node user owns the npm global directory and cache
-RUN chown -R node:node /home/node/.npm-global && \
-    install -d -m 0755 -o node -g node /home/node/.npm
+COPY --from=dsh-packager --chown=0:0 /tmp/dsh-backup.tar.xz /opt/dsh-backup.tar.xz
 
 # Pre-create state directories with correct ownership for volume mounting.
 # Named volumes / bind mounts inherit these permissions on first creation.
